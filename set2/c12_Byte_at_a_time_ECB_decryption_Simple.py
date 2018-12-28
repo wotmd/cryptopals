@@ -4,24 +4,21 @@ from random import randint
 import base64
 import os
 
-key = "4abc647688e6667c8c75bd5f1b508d13".decode("hex")
-#key = os.urandom(16)
-
-f = open("Challenge12.txt")
-Suffix = base64.b64decode(f.read())
-f.close()
+key = os.urandom(16)
+Suffix = base64.b64decode(open("Challenge12.txt").read())
 
 def encryption_oracle(plain):
 	plain = padding_pkcs7(plain+Suffix)
 	return AES_ecb_encrypt(plain, key)
 
-def find_block_size():
-	c = encryption_oracle("")
+def find_block_size(encryption_oracle):
+	pre_cp = encryption_oracle("")
 	p = "A"
 	while(True):
 		cp = encryption_oracle(p)
-		if(cp[len(p):]==c):
-			return len(p)
+		size = len(cp)-len(pre_cp)
+		if size != 0:
+			return size
 		p+="A"
 
 def ECB_check(cipher, block_size):
@@ -33,15 +30,16 @@ def ECB_check(cipher, block_size):
 			return True
 	return False
 
-def get_next_byte(known_suffix, block_size):
+def get_next_byte(encryption_oracle, known_suffix, block_size, prefix_size):
 	dic = {}
-	feed = "\x00"*(block_size-1-(len(known_suffix)%block_size))
+	feed = "\x00"*(block_size-(prefix_size%block_size))
+	feed += "\x00"*(block_size-1-(len(known_suffix)%block_size))
 
 	for i in range(0,256):
 		pt = feed + known_suffix + chr(i)
-		ct = encryption_oracle(pt)[:len(pt)]
+		ct = encryption_oracle(pt)[:len(pt)+prefix_size]
 		dic[ct]=chr(i)
-	ct = encryption_oracle(feed)[:len(feed + known_suffix)+1]
+	ct = encryption_oracle(feed)[:len(feed + known_suffix)+1+prefix_size]
 	if ct in dic:
 		return dic[ct]
 	else:
@@ -49,12 +47,12 @@ def get_next_byte(known_suffix, block_size):
 	
 
 if __name__ == '__main__':
-	BLOCK_SIZE = find_block_size()
-	if ECB_check(encryption_oracle("ABCD"*BLOCK_SIZE), BLOCK_SIZE) != True:
+	BLOCK_SIZE = find_block_size(encryption_oracle)
+	if ECB_check(encryption_oracle("ABCD"*BLOCK_SIZE*2), BLOCK_SIZE) != True:
 		exit(1)
 	secret = ""
 	while(True):
-		one_byte = get_next_byte(secret, BLOCK_SIZE)
+		one_byte = get_next_byte(encryption_oracle, secret, BLOCK_SIZE, 0)
 		if one_byte == "":
 			break
 		secret += one_byte
